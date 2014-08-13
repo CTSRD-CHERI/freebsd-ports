@@ -24,6 +24,15 @@ THREADS_DESC=	Build thread-safe version of the library
 
 USE_LDCONFIG=		yes
 
+.include <bsd.port.pre.mk>
+
+# Ref: /usr/share/mk/bsd.endian.mk
+.if ${ARCH} == "amd64" || ${ARCH} == "arm" || ${ARCH} == "i386"
+CPPFLAGS+=	-DU_IS_BIG_ENDIAN=0
+.else
+CPPFLAGS+=	-DU_IS_BIG_ENDIAN=1
+.endif
+
 WRKSRC=			${WRKDIR}/icu/source
 
 GNU_CONFIGURE=	yes
@@ -74,4 +83,4 @@ post-stage:
 
 test regression-test: iotest cintltst intltest
 
-.include <bsd.port.mk>
+.include <bsd.port.post.mk>

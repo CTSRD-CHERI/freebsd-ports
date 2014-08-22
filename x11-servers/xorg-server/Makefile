@@ -70,6 +70,7 @@ CONFIGURE_ARGS?=--disable-dmx --disable-xvfb --disable-xnest \
 		--without-xmlto --disable-docs --disable-devel-docs \
 		--localstatedir=/var --without-dtrace --disable-xephyr \
 		--enable-record=yes
+CONFIGURE_ARGS+=CPPFLAGS="-I/usr/local/include -I/usr/local/include/pixman-1"
 INSTALL_TARGET=	install-strip
 
 .if ${SLAVE_PORT} == "no"

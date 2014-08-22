@@ -1,0 +1,187 @@
+diff --git a/xorg-server-1.7.7/configure b/xorg-server-1.7.7/configure
+index c663cdb..719ace8 100755
+--- configure
++++ configure
+@@ -1127,6 +1127,8 @@ I386_VIDEO_FALSE
+ I386_VIDEO_TRUE
+ ARM_VIDEO_FALSE
+ ARM_VIDEO_TRUE
++MIPS_VIDEO_FALSE
++MIPS_VIDEO_TRUE
+ ALPHA_VIDEO_FALSE
+ ALPHA_VIDEO_TRUE
+ GLX_ARCH_DEFINES
+@@ -19258,6 +19260,9 @@ _ACEOF
+   arm*)
+ 	ARM_VIDEO=yes
+ 	;;
++  mips*)
++	MIPS_VIDEO=yes
++	;;
+   i*86)
+ 	I386_VIDEO=yes
+ 	case $host_os in
+@@ -19349,6 +19354,14 @@ else
+   ARM_VIDEO_FALSE=
+ fi
+ 
++ if test "x$MIPS_VIDEO" = xyes; then
++  MIPS_VIDEO_TRUE=
++  MIPS_VIDEO_FALSE='#'
++else
++  MIPS_VIDEO_TRUE='#'
++  MIPS_VIDEO_FALSE=
++fi
++
+  if test "x$I386_VIDEO" = xyes; then
+   I386_VIDEO_TRUE=
+   I386_VIDEO_FALSE='#'
+@@ -30782,6 +30795,13 @@ $as_echo "$as_me: error: conditional \"ARM_VIDEO\" was never defined.
+ Usually this means the macro was only invoked conditionally." >&2;}
+    { (exit 1); exit 1; }; }
+ fi
++if test -z "${MIPS_VIDEO_TRUE}" && test -z "${MIPS_VIDEO_FALSE}"; then
++  { { $as_echo "$as_me:$LINENO: error: conditional \"MIPS_VIDEO\" was never defined.
++Usually this means the macro was only invoked conditionally." >&5
++$as_echo "$as_me: error: conditional \"MIPS_VIDEO\" was never defined.
++Usually this means the macro was only invoked conditionally." >&2;}
++   { (exit 1); exit 1; }; }
++fi
+ if test -z "${I386_VIDEO_TRUE}" && test -z "${I386_VIDEO_FALSE}"; then
+   { { $as_echo "$as_me:$LINENO: error: conditional \"I386_VIDEO\" was never defined.
+ Usually this means the macro was only invoked conditionally." >&5
+diff --git a/xorg-server-1.7.7/hw/xfree86/os-support/bsd/Makefile.in b/xorg-server-1.7.7/hw/xfree86/os-support/bsd/Makefile.in
+index 612acdb..9643f0f 100644
+--- hw/xfree86/os-support/bsd/Makefile.in
++++ hw/xfree86/os-support/bsd/Makefile.in
+@@ -67,6 +67,7 @@ am__libbsd_la_SOURCES_DIST = $(srcdir)/../shared/posix_tty.c \
+ 	$(srcdir)/../shared/pm_noop.c $(srcdir)/bsd_apm.c \
+ 	$(srcdir)/bsd_kqueue_apm.c $(srcdir)/../shared/kmod_noop.c \
+ 	bsd_kmod.c
++@ALPHA_VIDEO_FALSE@@ARM_VIDEO_FALSE@@I386_VIDEO_FALSE@@PPC_VIDEO_FALSE@@SPARC64_VIDEO_FALSE@@MIPS_VIDEO_TRUE@am__objects_1 = mips_video.lo \
+ @ALPHA_VIDEO_FALSE@@ARM_VIDEO_FALSE@@I386_VIDEO_FALSE@@PPC_VIDEO_FALSE@@SPARC64_VIDEO_TRUE@am__objects_1 = sparc64_video.lo \
+ @ALPHA_VIDEO_FALSE@@ARM_VIDEO_FALSE@@I386_VIDEO_FALSE@@PPC_VIDEO_FALSE@@SPARC64_VIDEO_TRUE@	ioperm_noop.lo
+ @ALPHA_VIDEO_FALSE@@ARM_VIDEO_FALSE@@I386_VIDEO_FALSE@@PPC_VIDEO_TRUE@am__objects_1 = ppc_video.lo
+@@ -414,6 +415,7 @@ noinst_LTLIBRARIES = libbsd.la
+ @ALPHA_VIDEO_TRUE@	$(srcdir)/../shared/xf86Axp.c
+ 
+ @ARM_VIDEO_TRUE@ARCH_SOURCES = arm_video.c
++@MIPS_VIDEO_TRUE@ARCH_SOURCES = mips_video.c
+ @I386_VIDEO_TRUE@ARCH_SOURCES = i386_video.c
+ @PPC_VIDEO_TRUE@ARCH_SOURCES = ppc_video.c
+
+diff --git hw/xfree86/os-support/bsd/mips_video.c hw/xfree86/os-support/bsd/mips_video.c
+new file mode 100644
+index 0000000..466a8a0
+--- /dev/null
++++ hw/xfree86/os-support/bsd/mips_video.c
+@@ -0,0 +1,109 @@
++/*
++ * Copyright 1992 by Rich Murphey <Rich@Rice.edu>
++ * Copyright 1993 by David Wexelblat <dwex@goblin.org>
++ *
++ * Permission to use, copy, modify, distribute, and sell this software and its
++ * documentation for any purpose is hereby granted without fee, provided that
++ * the above copyright notice appear in all copies and that both that
++ * copyright notice and this permission notice appear in supporting
++ * documentation, and that the names of Rich Murphey and David Wexelblat 
++ * not be used in advertising or publicity pertaining to distribution of 
++ * the software without specific, written prior permission.  Rich Murphey and
++ * David Wexelblat make no representations about the suitability of this 
++ * software for any purpose.  It is provided "as is" without express or 
++ * implied warranty.
++ *
++ * RICH MURPHEY AND DAVID WEXELBLAT DISCLAIM ALL WARRANTIES WITH REGARD TO 
++ * THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND 
++ * FITNESS, IN NO EVENT SHALL RICH MURPHEY OR DAVID WEXELBLAT BE LIABLE FOR 
++ * ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER 
++ * RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF 
++ * CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN 
++ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ *
++ */
++
++#ifdef HAVE_XORG_CONFIG_H
++#include <xorg-config.h>
++#endif
++
++#include <X11/X.h>
++#include "xf86.h"
++#include "xf86Priv.h"
++#include "xf86_OSlib.h"
++#include "xf86OSpriv.h"
++
++/***************************************************************************/
++/* Video Memory Mapping section                                            */
++/***************************************************************************/
++
++#define DEV_MEM "/dev/mem"
++
++static pointer mapVidMem(int, unsigned long, unsigned long, int);
++static void unmapVidMem(int, pointer, unsigned long);
++
++void
++xf86OSInitVidMem(VidMemInfoPtr pVidMem)
++{
++	pVidMem->linearSupported = TRUE;
++	pVidMem->mapMem = mapVidMem;
++	pVidMem->unmapMem = unmapVidMem;
++	pVidMem->initialised = TRUE;
++}
++
++static pointer
++mapVidMem(int ScreenNum, unsigned long Base, unsigned long Size, int flags)
++{
++	int fd = xf86Info.screenFd;
++	pointer base;
++#ifdef DEBUG
++	xf86MsgVerb(X_INFO, 3, "MIPS mapVidMem %lx, %lx, fd = %d", Base, Size,
++		    fd);
++#endif
++	base = mmap(0, Size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, Base);
++	if (base == MAP_FAILED)
++		FatalError("%s: could not mmap [s=%x,a=%x] (%s)\n",
++			   "MIPS mapVidMem", Size, Base, strerror(errno));
++	return(base);
++}
++
++static void
++unmapVidMem(int ScreenNum, pointer Base, unsigned long Size)
++{
++	munmap((caddr_t)Base, Size);
++}
++
++int
++xf86ReadBIOS(unsigned long Base, unsigned long Offset, unsigned char *Buf,
++	     int Len)
++{
++	static int fd = -1;
++	int rv;
++
++	if (fd == -1) {
++		fd = open(DEV_MEM, O_RDWR);
++		if (fd == -1)
++			FatalError("xf86ReadBIOS: open %s", DEV_MEM);
++	}
++
++#ifdef DEBUG
++	xf86MsgVerb(X_INFO, 3, "xf86ReadBIOS: %lx %lx %x", Base, Offset, Len);
++#endif
++
++	lseek(fd, Base + Offset, 0);
++	rv = read(fd, Buf, Len);
++
++	return rv;
++}
++
++Bool
++xf86EnableIO(void)
++{
++	return TRUE;
++}
++
++void
++xf86DisableIO(void)
++{
++	return;
++}
